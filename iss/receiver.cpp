@@ -32,10 +32,9 @@ size_t Receiver::TEXT_PKT_FINISH_LEN = strlen(_TEXT_PKT_FINISH);
 #undef _BINARY_PKT_START
 #undef _TEXT_PKT_FINISH
 
-
 Receiver::Receiver(ICallback* callback)
 : _callback(callback),
-  _currentPacket{PT_NONE, 0, nullptr, 0, 0, 0, BPS_NONE}
+  _currentPacket{PT_NONE, 0, 0, nullptr, 0, 0, 0, BPS_NONE}
 {
 }
 
@@ -121,6 +120,10 @@ int32_t Receiver::lsbToHost(int32_t v)
 const char * Receiver::memmem(const char* haystack, size_t haystackLen,
                               const char* needle, size_t needleLen) const
 {
+    if (haystackLen < needleLen) {
+        return nullptr;
+    }
+
     const char * const haystackLimit = haystack + haystackLen;
     const char * const needleLimit = needle + needleLen;
 
@@ -158,6 +161,7 @@ void Receiver::packetStarted()
         dataRead(BINARY_PKT_START_LEN);
     } else {
         _currentPacket.type = PT_TEXT;
+        _currentPacket.textStart = 0;
     }
 
     anotherChunkReceivedImpl();
@@ -195,7 +199,7 @@ void Receiver::binaryPacketData()
         return;
     }
 
-    packetFinished(_currentPacket.packetSize, _currentPacket.packetSize);
+    packetFinished(getData(), _currentPacket.packetSize, _currentPacket.packetSize);
 }
 
 
@@ -204,14 +208,19 @@ void Receiver::packetContinueText()
     const char *found = memmem(getData(), dataAvailable(), TEXT_PKT_FINISH, TEXT_PKT_FINISH_LEN);
 
     if (found) {
-        packetFinished(found - getData(), found - getData() + TEXT_PKT_FINISH_LEN);
+        size_t offsetDelta = _currentPacket.offset - _currentPacket.textStart;
+        packetFinished(getData() - offsetDelta,
+                       found - getData() + offsetDelta,
+                       found - getData() + TEXT_PKT_FINISH_LEN);
+    } else if (dataAvailable() >= TEXT_PKT_FINISH_LEN) {
+        dataRead(dataAvailable() - TEXT_PKT_FINISH_LEN);
     }
 }
 
-void Receiver::packetFinished(size_t packetSize, size_t sizeToRead)
+void Receiver::packetFinished(const char *data, size_t packetSize, size_t sizeToRead)
 {
     auto callback = RECEIVED_PKT_CALLBACK[_currentPacket.type];
-    (_callback->*callback)(getData(), packetSize);
+    (_callback->*callback)(data, packetSize);
 
     dataRead(sizeToRead);
     shift();

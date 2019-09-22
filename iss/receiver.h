@@ -29,6 +29,7 @@ private:
         /* data from header */
         PacketType type;
         uint32_t packetSize;        // only used for binary pkt
+        size_t textStart;           // only used for text pkt
 
         char *data;                 // actual data
 
@@ -102,7 +103,7 @@ private:
     void packetContinueBinary();
     void packetContinueText();
 
-    void packetFinished(size_t packetSize, size_t sizeToRead);
+    void packetFinished(const char *data, size_t packetSize, size_t sizeToRead);
 
     void binaryPacketHeader();
     void binaryPacketData();
